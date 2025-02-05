@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:hive_ce_flutter/hive_flutter.dart';
-// import 'package:hive_ce/hive.dart';
+import 'package:persistent_data/car.dart';
+import 'package:persistent_data/note.dart';
+import 'package:realm/realm.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Hive.initFlutter();
+void main() {
   runApp(NotesApp());
 }
 
@@ -27,56 +26,74 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  late Box box;
-  final noteCtrl = TextEditingController();
-  List notes = [];
+  late Realm realm;
+  late RealmResults<Note> notes;
 
-  void initBox() async {
-    box = await Hive.openBox('notes');
-    loadBox();
+  final titleCtrl = TextEditingController();
+  final contentCtrl = TextEditingController();
+
+  void initRealm() {
+    var config = Configuration.local([Note.schema]);
+    realm = Realm(config);
+    loadNotes();
   }
 
-  void loadBox() {
-    notes = box.values.toList();
+  void loadNotes([String search = '']) {
+    notes = realm.all<Note>();
     setState(() {});
-    print(notes.length);
   }
 
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
-    initBox();
+    initRealm();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: ListView.builder(
-          itemBuilder: (_, index) {
-            return Dismissible(
-              key: UniqueKey(),
-              onDismissed: (direction) {
-                doDelete(index);
+        child: Column(
+          children: [
+            TextField(
+              onChanged: (value) {
+                loadNotes(value);
               },
-              child: Card(
-                child: ListTile(
-                  title: Text(
-                    notes.elementAt(index),
-                  ),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                label: Text(
+                  'Search',
                 ),
               ),
-            );
-          },
-          itemCount: notes.length,
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemBuilder: (_, index) {
+                  var note = notes[index];
+                  return Dismissible(
+                    key: UniqueKey(),
+                    onDismissed: (_) {
+                      doDelete(note);
+                    },
+                    child: Card(
+                      child: ListTile(
+                        title: Text(note.title),
+                        subtitle: Text(note.content),
+                        trailing: Text(note.date.toString()),
+                      ),
+                    ),
+                  );
+                },
+                itemCount: notes.length,
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: showAddDialog,
-        child: Icon(
-          Icons.add,
-        ),
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -87,34 +104,51 @@ class _NotesScreenState extends State<NotesScreen> {
         builder: (_) {
           return AlertDialog(
             actions: [
-              TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Close')),
               ElevatedButton(
                 onPressed: doAdd,
                 child: const Text('Add'),
               ),
             ],
-            content: TextField(
-              controller: noteCtrl,
-            ),
             title: const Text('Add Note'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                ),
+                TextField(
+                  controller: contentCtrl,
+                  maxLines: 6,
+                ),
+              ],
+            ),
           );
         });
   }
 
   void doAdd() {
-    box.add(noteCtrl.text);
-    noteCtrl.clear();
+    realm.write(() {
+      var note = Note(titleCtrl.text, contentCtrl.text, date: DateTime.now());
+      realm.add(note);
+      print('added');
+    });
     Navigator.of(context).pop();
-    loadBox();
+    loadNotes();
   }
 
-  void doDelete(int i) {
-    box.deleteAt(i);
-    loadBox();
+  void doUpdate(Note n) {
+    realm.write(() {
+      n.title = '';
+      n.content = '';
+    });
+    loadNotes();
+  }
+
+  void doDelete(Note n) {
+    realm.write(() {
+      realm.delete(n);
+    });
+    loadNotes();
   }
 }
 
@@ -125,27 +159,34 @@ class _NotesScreenState extends State<NotesScreen> {
 //   Widget build(BuildContext context) {
 //     return Scaffold(
 //       body: SafeArea(
-//         child: Column(
-//           children: [
-//             ElevatedButton(
-//               onPressed: () async {
-//                 var box = await Hive.openBox('items');
-//                 box.add('tamayo');
-//                 print('saved name');
-//               },
-//               child: Text('Open Box'),
-//             ),
-//             ElevatedButton(
-//                 onPressed: () async {
-//                   var box = await Hive.openBox('items');
-//                   var name = box.get('name');
-//                   // await box.clear();
-//                   print(box.keys);
-//                   print(box.values);
-//                   print(box.get(0));
-//                 },
-//                 child: Text('Get from box'))
-//           ],
+//         child: ElevatedButton(
+//           onPressed: () {
+//             var config = Configuration.local([Car.schema]);
+//             var realm = Realm(config);
+//             var cars = realm.all<Car>();
+//             var lastCar = cars.last;
+//             // cars.forEach((car) {
+//             //   print('${car.make} ${car.model} ${car.kilometers}');
+//             // });
+//             realm.write(() {
+//               //save
+//               //add
+//               // var car = Car('Mitsu', 'XForce', kilometers: 500);
+//               // realm.add(car);
+//               // print('add');
+//               //update
+//               lastCar.make = 'Tesla';
+//               //delete
+//               // realm.delete(lastCar);
+//             });
+
+//             cars.forEach((car) {
+//               print('${car.make} ${car.model} ${car.kilometers}');
+//             });
+//           },
+//           child: Text(
+//             'Open',
+//           ),
 //         ),
 //       ),
 //     );
